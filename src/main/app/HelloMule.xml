@@ -1,14 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
-      xmlns:http="http://www.mulesoft.org/schema/mule/http"
-      xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-      xmlns:spring="http://www.springframework.org/schema/beans" version="CE-3.3.1"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:jdbc="http://www.mulesoft.org/schema/mule/jdbc" xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:spring="http://www.springframework.org/schema/beans" version="CE-3.3.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd 
 http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
 http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd 
+http://www.mulesoft.org/schema/mule/jdbc http://www.mulesoft.org/schema/mule/jdbc/current/mule-jdbc.xsd 
 http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd 
-http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd ">
+    <jdbc:oracle-data-source name="db1_datasource" user="db1" password="db1" url="jdbc:oracle:thin:@//localhost:1521/xe" transactionIsolation="UNSPECIFIED" doc:name="Oracle Data Source"/>
+    <jdbc:connector name="db1" dataSource-ref="db1_datasource" validateConnections="true" queryTimeout="-1" pollingFrequency="0" doc:name="Database">
+        <jdbc:query key="polling" value="select id from mytable where status=0"/>
+        <jdbc:query key="update" value="update mytable set status=1 where id=#[message.payload.id]"/>
+        <jdbc:query key="fetch" value="select id,val from mytable where id=#[message.payload.id]"/>
+    </jdbc:connector>
+    <jdbc:oracle-data-source name="db2_datasource" user="db2" password="db2" url="jdbc:oracle:thin:@//localhost:1521/xe" transactionIsolation="UNSPECIFIED" doc:name="Oracle Data Source"/>
+    <jdbc:connector name="db2" dataSource-ref="db2_datasource" validateConnections="true" queryTimeout="-1" pollingFrequency="0" doc:name="Database">
+        <jdbc:query key="insert" value="insert into othertable (id, val) values (#[message.payload.id],#[message.payload.val])"/>
+    </jdbc:connector>
     <flow name="HelloMuleFlow1" doc:name="HelloMuleFlow1">
         <http:inbound-endpoint exchange-pattern="request-response" host="localhost" port="8081" doc:name="HTTP"/>
         <logger message="Hello #[message:payload]" level="INFO" doc:name="Logger"/>
@@ -17,5 +26,18 @@ http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/cor
                 <scripting:text><![CDATA["hello " + message.payload.substring(1)]]></scripting:text>
             </scripting:script>
         </scripting:transformer>
+    </flow>
+    <flow name="HelloMuleFlow2" doc:name="HelloMuleFlow2">
+        <jdbc:inbound-endpoint queryTimeout="-1" pollingFrequency="10000" doc:name="New record" connector-ref="db1" queryKey="polling"/>
+        <logger message="New record #[message:payload]" level="INFO" doc:name="Logger"/>
+        <jdbc:outbound-endpoint exchange-pattern="one-way" queryKey="update" queryTimeout="-1" connector-ref="db1" doc:name="Update selected record"/>
+        <vm:outbound-endpoint exchange-pattern="one-way" path="notif" doc:name="VM"/>
+    </flow>
+    <flow name="HelloMuleFlow3" doc:name="HelloMuleFlow3">
+        <vm:inbound-endpoint exchange-pattern="one-way" path="notif" doc:name="VM"/>
+        <logger message="notif #[message:payload]" level="INFO" doc:name="Logger"/>
+        <jdbc:outbound-endpoint exchange-pattern="one-way" queryKey="fetch" queryTimeout="-1" connector-ref="db1" doc:name="Fetch record"/>
+        <logger message="fetch #[header:db2]" level="INFO" doc:name="Logger"/>
+        <jdbc:outbound-endpoint exchange-pattern="one-way" queryTimeout="-1" doc:name="Database" connector-ref="db2" queryKey="insert"/>
     </flow>
 </mule>

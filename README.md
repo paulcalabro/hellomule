@@ -1,0 +1,3 @@
+```
+mvn -Ptomcat clean install
+```
